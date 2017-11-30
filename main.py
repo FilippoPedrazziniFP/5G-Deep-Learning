@@ -1,136 +1,123 @@
+import os
+import sys
+import tensorflow as tf
 import numpy as np
-import pandas as pd
-from sklearn import preprocessing
-from keras.utils import np_utils
-from sklearn.metrics import classification_report
-from keras.models import Sequential
-from keras.layers.normalization import BatchNormalization
-from keras.layers.core import Dense, Dropout
-from sklearn.metrics import confusion_matrix
+from preprocessing import Preprocessing
+from model import DeepModel
+from plots import Plot
+import argparse
 
-# importing the dataset
-col_names = ["duration","protocol_type","service","flag","src_bytes",
-    "dst_bytes","land","wrong_fragment","urgent","hot","num_failed_logins",
-    "logged_in","num_compromised","root_shell","su_attempted","num_root",
-    "num_file_creations","num_shells","num_access_files","num_outbound_cmds",
-    "is_host_login","is_guest_login","count","srv_count","serror_rate",
-    "srv_serror_rate","rerror_rate","srv_rerror_rate","same_srv_rate",
-    "diff_srv_rate","srv_diff_host_rate","dst_host_count","dst_host_srv_count",
-    "dst_host_same_srv_rate","dst_host_diff_srv_rate","dst_host_same_src_port_rate",
-    "dst_host_srv_diff_host_rate","dst_host_serror_rate","dst_host_srv_serror_rate",
-    "dst_host_rerror_rate","dst_host_srv_rerror_rate","labels"]
+parser = argparse.ArgumentParser()
+parser.add_argument('--batch_size', type=int, default=100, help='batch size for the training.')
+parser.add_argument('--dropout', type=float, default=0.2, help='keep probability of neurons during the training.')
+parser.add_argument('--epochs', type=int, default=10, help='number of batch iterations.')
+parser.add_argument('--validation', type=int, default=10, help='number of batch iterations.')
+parser.add_argument('--weight_decay', type=float, default=0.0002, help='scale for l2 regularization.')
+parser.add_argument('--learning_rate', type=float, default=0.1, help='initial learning rate.')
+args = parser.parse_args()
 
-dataset = pd.read_csv('./dataset_kdd/train.csv', delimiter=',',header=None, names=col_names, index_col=False)
-dataset_test = pd.read_csv('./dataset_kdd/test.csv', delimiter=',',header=None, names=col_names, index_col=False)
+# Model constants
+_TRAIN_PATH = './dataset_kdd/train.csv'
+_TEST_PATH = './dataset_kdd/test.csv'
+_PROCESSORS = 8
 
-# preprocessing train set
-target = dataset['labels'].copy()
-target[target != 'normal'] = 'attack'
-X_train = dataset.iloc[:, :-1]
+def next_batch(num, data, labels):
+    idx = np.arange(0 , len(data))
+    np.random.shuffle(idx)
+    idx = idx[:num]
+    data_shuffle = [data[ i] for i in idx]
+    labels_shuffle = [labels[ i] for i in idx]
+    return np.asarray(data_shuffle), np.asarray(labels_shuffle)
 
-# y_to_binary
-le = preprocessing.LabelEncoder()
-le.fit(target)
-binary_target = le.transform(target)
-y_train = binary_target
+def training(X_train, X_test, y_train, y_test):
 
-target = dataset_test['labels'].copy()
-target[target != 'normal'] = 'attack'
-X_test = dataset_test.iloc[:, :-1]
+    train_a = []
+    train_c = []
+    test_a = []
+    test_c = []
 
-le = preprocessing.LabelEncoder()
-le.fit(target)
-binary_target = le.transform(target)
-y_test = binary_target
+    model = DeepModel()
+    """ Tensorflow needs to see the graph before initilize the variables for the computation """
+    model.build_graph()
+    config = tf.ConfigProto(intra_op_parallelism_threads=_PROCESSORS, inter_op_parallelism_threads=_PROCESSORS)
+    sess = tf.Session(config=config)
+    sess.run(tf.global_variables_initializer())
+    print(tf.global_variables())
 
-all_data = pd.concat((X_train,X_test))
-for column in all_data.select_dtypes(include=[np.object]).columns:
-    X_train[column] = X_train[column].astype('category', categories=all_data[column].unique())
-    X_test[column] = X_test[column].astype('category', categories=all_data[column].unique())
-    print(column, all_data[column].unique())
+    for epoch in range(FLAGS.epochs*FLAGS.batch_size):
+        batch_x, batch_y = next_batch(FLAGS.batch_size, X_train, y_train)
+        train_dict = {model.x: batch_x, model.y_: batch_y, model.learning_rate: FLAGS.learning_rate, model.dropout: FLAGS.dropout, model.weight_decay: FLAGS.weight_decay, model.is_training: True}
+        sess.run(model.optimizer, feed_dict=train_dict)
+        if epoch % 10 == 0:
+            a, c = sess.run([model.acc, model.loss], feed_dict=train_dict)
+            train_a.append(a)
+            train_c.append(c)
+            print("Train accuracy: ", a)
 
-X_train = pd.get_dummies(X_train)
-X_test = pd.get_dummies(X_test)
+            test_dict = {model.x: X_test, model.y_: y_test, model.learning_rate: FLAGS.learning_rate, model.dropout: FLAGS.dropout, model.weight_decay: FLAGS.weight_decay, model.is_training: False}
+            a, c = sess.run([model.acc, model.loss], feed_dict=test_dict)
+            test_a.append(a)
+            test_c.append(c)
+            print("Test accuracy: ", a)
 
-X_train = X_train.astype(float).values
-X_test = X_test.astype(float).values
+    y_pred = model.acc.eval(feed_dict=test_dict)
+    return (train_a, train_c, test_a, test_c, y_pred)
 
-print("X_train shape: ", X_train.shape)
-print("X_test shape: ", X_test.shape)
+def main(argv):
 
-print("y_train shape: ", y_train.shape)
-print("y_test shape: ", y_test.shape)
+    X_train, X_test, y_train, y_test = Preprocessing.train_preprocessing(_TRAIN_PATH)
+    model = DeepModel()
+    
+    train_a, train_c, test_a, test_c, y_pred = training(X_train, X_test, y_train, y_test)
+    visualizing_learning(train_a, train_c, test_a, test_c, y_pred, y_test)
+    return
 
-# feature scaling
-from sklearn.preprocessing import StandardScaler
-sc = StandardScaler()
-sc.fit(X_train)
-X_train = sc.transform(X_train)
-X_test = sc.transform(X_test)
+if __name__ == '__main__':
+    tf.logging.set_verbosity(tf.logging.INFO)
+    FLAGS, unparsed = parser.parse_known_args()
+    tf.app.run(main=main, argv=[sys.argv[0]] + unparsed)
 
-# Get dimensions of input and output
-dimof_input = X_train.shape[1]
-dimof_output = np.max(y_train) + 1
-print('dimof_input: ', dimof_input)
-print('dimof_output: ', dimof_output)
+"""
+# 1. Declare summaries that you'd like to collect.
+tf.scalar_summary("summary_name", tensor, name = "summary_op_name")
 
-# Set y categorical
-y_train = np_utils.to_categorical(y_train, dimof_output)
-y_test = np_utils.to_categorical(y_test, dimof_output)
+# 2. Construct a summary writer object for the computation graph, once all summaries are defined.
+summary_writer = tf.train.SummaryWriter(summary_dir_name, sess.graph)
 
-# some constants
-batch_size = 128
-dimof_middle = 100
-dropout = 0.05
-count_of_epoch = 20
-verbose = 0
-encoding_dim = 30
+# 3. Group all previously declared summaries for serialization. Usually we want all summaries defined
+# in the computation graph. To pick a subset, use tf.merge_summary([summaries]).
+summaries_tensor = tf.merge_all_summaries()
 
-print('batch_size: ', batch_size)
-print('dimof_middle: ', dimof_middle)
-print('dropout: ', dropout)
-print('countof_epoch: ', count_of_epoch)
-print('verbose: ', verbose)
-print('encoding_dim: ', encoding_dim)
+# 4. At runtime, in appropriate places, evaluate the summaries_tensor, to assign value.
+summary_value, ... = sess.run([summaries_tensor, ...], feed_dict={...})
 
-def build_model(dimof_input, dimof_output, dimof_middle, dropout):
+# 5. Write the summary value to disk, using summary writer.
+summary_writer.add_summary(summary_value, global_step=step)
 
-    model = Sequential()
+saving scores
+file = open("scores.txt", "a")
+file.write("Params: %s --> Score: %s" %(args, test_accuracy))
+file.close()
 
-    model.add(Dense(dimof_middle, input_dim=dimof_input, kernel_initializer='uniform', activation='tanh'))
-    model.add(BatchNormalization())
-    model.add(Dropout(dropout))
-    model.add(Dense(dimof_middle, kernel_initializer='uniform', activation='tanh'))
-    model.add(BatchNormalization())
-    model.add(Dropout(dropout))
-    model.add(Dense(dimof_output, kernel_initializer='uniform', activation='softmax'))
-    model.compile(loss='binary_crossentropy', optimizer='sgd', metrics=['binary_accuracy'])
+saving the model
+saver = tf.train.Saver()
+saver.save(sess, checkpoints_file_name)
 
-    return model
+to restore the saved model
+saver = tf.train.import_meta_graph(checkpoints_file_name + '.meta')
+saver.restore(sess, checkpoints_file_name)
 
-model = build_model(dimof_input=dimof_input, dimof_output=dimof_output, dropout=0.2, dimof_middle=dimof_middle)
+other method without parsing parameters
+tf.app.flags.DEFINE_boolean("some_flag", False, "Documentation")
 
-print("Model Summary")
-model.summary()
+FLAGS = tf.app.flags.FLAGS
 
-model.fit(X_train, y_train, epochs=count_of_epoch, verbose=0, batch_size=batch_size)
-result = model.evaluate(X_test, y_test, batch_size=batch_size)
-print("accuarcy: ", result)
-y_pred = model.predict(X_test)
+def main(_):
+  # your code goes here...
+  # use FLAGS.some_flag in the code.
 
-# transforming pred and test into an array to get the classification report
-y_pred_clas = np.argmax(y_pred, axis=1)
-y_test_clas = np.argmax(y_test, axis=1)
+if __name__ == '__main__':
+    tf.app.run()
+"""
 
-# validation
-def custom_confusion_matrix(y_true, y_pred, labels=["False", "True"]):
-
-    cm = confusion_matrix(y_true, y_pred)
-    pred_labels = ["Predicted " + l for l in labels]
-    df = pd.DataFrame(cm, index=labels, columns=pred_labels)
-    return df
-
-print("Confusion Matrix")
-print(custom_confusion_matrix(y_test_clas, y_pred_clas, ['Attack', 'Normal']))
-print("Classification Report")
-print(classification_report(y_test_clas, y_pred_clas))
+    
