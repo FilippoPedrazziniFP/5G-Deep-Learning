@@ -42,3 +42,11 @@ class Plot(object):
 	    pred_labels = ["Predicted " + l for l in labels]
 	    df = pd.DataFrame(cm, index=labels, columns=pred_labels)
 	    return df
+
+	@staticmethod
+	def saving_scores(flags, test_accuracy):
+		file = open("results/scores.txt", "a")
+		file.write("Params: %s --> Score: %s" %(flags, test_accuracy))
+		file.close()
+		print("Saved test score and parameters in a file.")
+		return

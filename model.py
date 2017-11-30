@@ -4,7 +4,7 @@ import functools
 
 _CLASSES = 2
 _INPUT_DIMENSION = 122
-BN_EPSILON = 0.001
+_BN_EPSILON = 0.001
 _HIDDEN_UNITS = 15
 _ENCODING_DIMESION = 30
 _K_LEARNING_DECAY = 0.5
@@ -86,7 +86,7 @@ class Layers(object):
 		mean, variance = tf.nn.moments(input_layer, axes=[0])
 		beta = tf.get_variable('beta', dimension, tf.float32, initializer=tf.constant_initializer(0.0, tf.float32))
 		gamma = tf.get_variable('gamma', dimension, tf.float32, initializer=tf.constant_initializer(1.0, tf.float32))
-		bn_layer = tf.nn.batch_normalization(input_layer, mean, variance, beta, gamma, BN_EPSILON)
+		bn_layer = tf.nn.batch_normalization(input_layer, mean, variance, beta, gamma, _BN_EPSILON)
 
 		return bn_layer
 		

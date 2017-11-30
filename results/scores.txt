@@ -1,0 +1,1 @@
+Params: Namespace(batch_size=100, dropout=0.2, epochs=1, learning_rate=0.1, model_path='./model/model', restore=False, save_scores=True, validation=10, weight_decay=0.0002) --> Score: 0.976503

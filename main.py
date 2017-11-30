@@ -17,6 +17,9 @@ parser.add_argument('--epochs', type=int, default=1, help='number of batch itera
 parser.add_argument('--validation', type=int, default=10, help='number of batch iterations.')
 parser.add_argument('--weight_decay', type=float, default=0.0002, help='scale for l2 regularization.')
 parser.add_argument('--learning_rate', type=float, default=0.1, help='initial learning rate.')
+parser.add_argument('--model_path', type=str, default='./model/model', help='model checkpoints directory.')
+parser.add_argument('--restore', type=bool, default=False, help='if True restore the model from --model_path.')
+parser.add_argument('--save_scores', type=bool, default=True, help='if True save scores with parameters in a txt file.')
 args = parser.parse_args()
 
 # Model constants
@@ -45,6 +48,13 @@ def training(X_train, X_test, y_train, y_test):
     model.build_graph()
     config = tf.ConfigProto(intra_op_parallelism_threads=_PROCESSORS, inter_op_parallelism_threads=_PROCESSORS)
     sess = tf.Session(config=config)
+    saver = tf.train.Saver()
+    """ To restore the saved model """
+    if FLAGS.restore == True:
+        saver = tf.train.import_meta_graph(FLAGS.model_path + '.meta')
+        saver.restore(sess, tf.train.latest_checkpoint('./model/'))
+        print("Model restored from checkpoint")
+    
     sess.run(tf.global_variables_initializer())
 
     for epoch in bar(range(FLAGS.epochs*FLAGS.batch_size)):
@@ -55,15 +65,17 @@ def training(X_train, X_test, y_train, y_test):
             a, c = sess.run([model.acc, model.loss], feed_dict=train_dict)
             train_a.append(a)
             train_c.append(c)
-            # print("Train accuracy: ", a)
 
             test_dict = {model.x: X_test, model.y_: y_test, model.learning_rate: FLAGS.learning_rate, model.dropout: FLAGS.dropout, model.weight_decay: FLAGS.weight_decay, model.is_training: False}
             a, c = sess.run([model.acc, model.loss], feed_dict=test_dict)
             test_a.append(a)
             test_c.append(c)
-            # print("Test accuracy: ", a)
 
-    y_pred = sess.run([model.predictions],feed_dict=test_dict)
+    """ Save model parameters """
+    model_path = saver.save(sess, FLAGS.model_path)
+    print("Model saved in: ", model_path)
+    """ Computing predictions for further analysis """
+    y_pred = sess.run([model.predictions], feed_dict=test_dict)
     return (train_a, train_c, test_a, test_c, y_pred)
 
 def main(argv):
@@ -73,6 +85,8 @@ def main(argv):
     
     train_a, train_c, test_a, test_c, y_pred = training(X_train, X_test, y_train, y_test)
     Plot.visualizing_learning(train_a, train_c, test_a, test_c, y_pred, y_test)
+    if FLAGS.save_scores == True:
+        Plot.saving_scores(FLAGS, test_a[-1])
     return
 
 if __name__ == '__main__':
@@ -97,19 +111,9 @@ summary_value, ... = sess.run([summaries_tensor, ...], feed_dict={...})
 # 5. Write the summary value to disk, using summary writer.
 summary_writer.add_summary(summary_value, global_step=step)
 
-saving scores
-file = open("scores.txt", "a")
-file.write("Params: %s --> Score: %s" %(args, test_accuracy))
-file.close()
+"""
 
-saving the model
-saver = tf.train.Saver()
-saver.save(sess, checkpoints_file_name)
-
-to restore the saved model
-saver = tf.train.import_meta_graph(checkpoints_file_name + '.meta')
-saver.restore(sess, checkpoints_file_name)
-
+"""
 other method without parsing parameters
 tf.app.flags.DEFINE_boolean("some_flag", False, "Documentation")
 

@@ -28,6 +28,7 @@ class Preprocessing(object):
 				    "dst_host_rerror_rate","dst_host_srv_rerror_rate","labels"]
 
 		df = pd.read_csv(data_path, delimiter=',',header=None, names=col_names, index_col=False)
+		
 		return df
 
 	@staticmethod
@@ -37,7 +38,7 @@ class Preprocessing(object):
 
 	@staticmethod
 	def getting_x_y(df):
-		# X to values (numpy array) y binary
+
 		target = df['labels'].copy()
 		target[target != 'normal'] = 'attack'
 		X = df.iloc[:, :-1]
@@ -47,14 +48,17 @@ class Preprocessing(object):
 		le.fit(target)
 		binary_target = le.transform(target)
 		y = binary_target
+		
 		return X, y
 
 	@staticmethod
 	def feature_scaling(X_train, X_test):
+		
 		sc = StandardScaler()
 		sc.fit(X_train)
 		X_train = sc.transform(X_train)
 		X_test = sc.transform(X_test)
+		
 		return X_train, X_test
 
 	@staticmethod
