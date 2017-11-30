@@ -1,5 +1,7 @@
-from sklearn.metrics import confusion_matrix
+from sklearn.metrics import confusion_matrix, classification_report
 import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
 
 class Plot(object):
 	"""docstring for Plot"""
@@ -8,7 +10,7 @@ class Plot(object):
 		self.arg = arg
 
 	@staticmethod
-	def visualizing_learning(train_a, train_c, test_a, test_c, y_pred, y_true):
+	def visualizing_learning(train_a, train_c, test_a, test_c, y_pred, y_test):
 	    plt.title("Accuracy")
 	    plt.plot(train_a, label="train")
 	    plt.plot(test_a, label="test")
@@ -24,7 +26,9 @@ class Plot(object):
 	    plt.show()
 	    
 	    y_test = np.argmax(y_test, axis=1)
-	    
+	    y_pred = np.asarray(y_pred).reshape(-1, 2)
+	    y_pred = np.argmax(y_pred, axis=1)
+
 	    print("Confusion Matrix")
 	    print(Plot.custom_confusion_matrix(y_test, y_pred, ['Attack', 'Normal']))
 	    print("Classification Report")

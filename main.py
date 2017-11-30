@@ -6,11 +6,14 @@ from preprocessing import Preprocessing
 from model import DeepModel
 from plots import Plot
 import argparse
+import progressbar
+
+bar = progressbar.ProgressBar()
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--batch_size', type=int, default=100, help='batch size for the training.')
 parser.add_argument('--dropout', type=float, default=0.2, help='keep probability of neurons during the training.')
-parser.add_argument('--epochs', type=int, default=10, help='number of batch iterations.')
+parser.add_argument('--epochs', type=int, default=1, help='number of batch iterations.')
 parser.add_argument('--validation', type=int, default=10, help='number of batch iterations.')
 parser.add_argument('--weight_decay', type=float, default=0.0002, help='scale for l2 regularization.')
 parser.add_argument('--learning_rate', type=float, default=0.1, help='initial learning rate.')
@@ -37,14 +40,14 @@ def training(X_train, X_test, y_train, y_test):
     test_c = []
 
     model = DeepModel()
-    """ Tensorflow needs to see the graph before initilize the variables for the computation """
+    """ Tensorflow needs to see the graph before initilize 
+        the variables for the computation """
     model.build_graph()
     config = tf.ConfigProto(intra_op_parallelism_threads=_PROCESSORS, inter_op_parallelism_threads=_PROCESSORS)
     sess = tf.Session(config=config)
     sess.run(tf.global_variables_initializer())
-    print(tf.global_variables())
 
-    for epoch in range(FLAGS.epochs*FLAGS.batch_size):
+    for epoch in bar(range(FLAGS.epochs*FLAGS.batch_size)):
         batch_x, batch_y = next_batch(FLAGS.batch_size, X_train, y_train)
         train_dict = {model.x: batch_x, model.y_: batch_y, model.learning_rate: FLAGS.learning_rate, model.dropout: FLAGS.dropout, model.weight_decay: FLAGS.weight_decay, model.is_training: True}
         sess.run(model.optimizer, feed_dict=train_dict)
@@ -52,15 +55,15 @@ def training(X_train, X_test, y_train, y_test):
             a, c = sess.run([model.acc, model.loss], feed_dict=train_dict)
             train_a.append(a)
             train_c.append(c)
-            print("Train accuracy: ", a)
+            # print("Train accuracy: ", a)
 
             test_dict = {model.x: X_test, model.y_: y_test, model.learning_rate: FLAGS.learning_rate, model.dropout: FLAGS.dropout, model.weight_decay: FLAGS.weight_decay, model.is_training: False}
             a, c = sess.run([model.acc, model.loss], feed_dict=test_dict)
             test_a.append(a)
             test_c.append(c)
-            print("Test accuracy: ", a)
+            # print("Test accuracy: ", a)
 
-    y_pred = model.acc.eval(feed_dict=test_dict)
+    y_pred = sess.run([model.predictions],feed_dict=test_dict)
     return (train_a, train_c, test_a, test_c, y_pred)
 
 def main(argv):
@@ -69,7 +72,7 @@ def main(argv):
     model = DeepModel()
     
     train_a, train_c, test_a, test_c, y_pred = training(X_train, X_test, y_train, y_test)
-    visualizing_learning(train_a, train_c, test_a, test_c, y_pred, y_test)
+    Plot.visualizing_learning(train_a, train_c, test_a, test_c, y_pred, y_test)
     return
 
 if __name__ == '__main__':

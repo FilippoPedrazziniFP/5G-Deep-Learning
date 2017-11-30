@@ -48,6 +48,7 @@ class DeepModel(object):
 	def build_graph(self):
 		logits = self.inference(self.x, reuse=False)
 		vali_logits = self.inference(self.x, reuse=True)
+		self.predictions = tf.nn.softmax(vali_logits)
 		self.loss = self.error(logits, self.y_) 
 		self.optimizer = self.optimize(self.loss)
 		self.acc = self.accuracy(vali_logits, self.y_)
