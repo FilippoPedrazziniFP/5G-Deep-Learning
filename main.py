@@ -36,12 +36,10 @@ parser.add_argument('--beta', type=float, default=3, help='regularization parame
 parser.add_argument('--learning_rate_sparse', type=float, default=0.1, help='initial learning rate.')
 
 """ Stacked Denoising Autoencoder Parameters """
-""" (REG, NOISE, FRACTION, LEARNING RATE):  [0.01, 'salt_and_pepper', 0.1, 0.1] """
-""" (REG, NOISE, FRACTION, LEARNING RATE):  [0.01, 'masking', 0.0, 0.1] """
 parser.add_argument('--noise', type=str, choices= ["masking" , "salt_and_pepper", None], default="salt_and_pepper", help='noising method for corrupting the input.')
 parser.add_argument('--fraction', type=float, default=0.1, help='fraction of the input to corrupt.')
 parser.add_argument('--learning_rate_stacked', type=float, default=0.01, help='initial learning rate.')
-parser.add_argument('--reg_stacked', type=float, default=0.1, help='regularization parameter for stacked autoencoder.')
+parser.add_argument('--reg_stacked', type=float, default=0.01, help='regularization parameter for stacked autoencoder.')
 
 args = parser.parse_args()
 

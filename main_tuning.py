@@ -8,6 +8,7 @@ from plots import Plot
 import argparse
 import progressbar
 from itertools import product
+from sklearn.model_selection import StratifiedKFold
 
 bar = progressbar.ProgressBar()
 parser = argparse.ArgumentParser()
@@ -18,7 +19,8 @@ parser.add_argument('--restore', type=bool, default=False, help='if True restore
 parser.add_argument('--save_scores', type=bool, default=True, help='if True save scores with parameters in a txt file.')
 parser.add_argument('--test', type=bool, default=True, help='if True compute the score on the test set.')
 parser.add_argument('--plot', type=bool, default=False, help='if True plots train and test accuracy/loss.')
-parser.add_argument('--report', type=bool, default=True, help='if True plots classification report.')
+parser.add_argument('--report', type=bool, default=False, help='if True plots classification report.')
+parser.add_argument('--k', type=int, default=5, help='k fold cross validation.')
 
 """ Softmax parameters """
 parser.add_argument('--batch_size', type=int, default=100, help='batch size for the training.')
@@ -69,14 +71,11 @@ def training_classifier(X_train, X_test, y_train, y_test):
             a, c = sess.run([model.acc, model.loss], feed_dict=train_dict)
             train_a.append(a)
             train_c.append(c)
-            # print("Train Accuracy: ", a)
 
             test_dict = {model.x: X_test, model.y_: y_test, model.learning_rate: FLAGS.learning_rate, model.dropout: FLAGS.dropout, model.weight_decay: FLAGS.weight_decay, model.is_training: False}
             a, c = sess.run([model.acc, model.loss], feed_dict=test_dict)
             test_a.append(a)
             test_c.append(c)
-            # print("Test Accuracy: ", a)
-    """ Computing predictions for further analysis """
     y_pred = sess.run([model.predictions], feed_dict=test_dict)
     return (train_a, train_c, test_a, test_c, y_pred)
 
@@ -114,7 +113,7 @@ def train_stacked_autoencoder(X_train, X_test, reg, nois, frac, lr):
     """ Closing the session to avoid cnflicts with the test """
     return X_train, X_test
 
-def grid_search_stacked_autoencoder():
+def grid_search():
     reg_stacked = [0.1, 0.01, 0.001, 0.5]   
     noise = ["masking", "salt_and_pepper"]
     fraction = [0.1, 0.0, 0.5, 0.8]
@@ -126,21 +125,25 @@ def grid_search_stacked_autoencoder():
         if f1_score > best_f1:
             model_dict[f1_score] = [reg, nois, frac, lr]
             best_f1 = f1_score
-            print("Best f1 until now: %s with parameters: %s" %(best_f1, model_dict[best_f1]))
     print("Best f1: %s with parameters: %s" %(best_f1, model_dict[best_f1]))
     return model_dict[best_f1]
 
 def model(reg, nois, frac, lr):
-    X_train, X_test, y_train, y_test = Preprocessing.test_preprocessing(_TRAIN_PATH, _TEST_PATH)
-    # implementing gridsearch on the train set
-    X_train, X_test = train_stacked_autoencoder(X_train, X_test, reg, nois, frac, lr)
-    """ Running the classifier """
-    f1_score = classifier(X_train, X_test, y_train, y_test)
-    tf.reset_default_graph()
-    return f1_score
+    k_fold = StratifiedKFold(n_splits=FLAGS.k, random_state=0)
+    """ just 20 percent of the dataset to speed up the computation """
+    X_train, X_test, y_train, y_test = Preprocessing.train_preprocessing(_TRAIN_PATH)
+    avg_f1_score = 0
+    y_copy = np.copy(y_train) 
+    y_copy_first_column = y_copy[:,0]
+    for train, test in k_fold.split(X_train, y_copy_first_column):
+        X_train_enc, X_test_enc = train_stacked_autoencoder(X_train[train], X_train[test], reg, nois, frac, lr)
+        avg_f1_score = np.average(avg_f1_score + classifier(X_train_enc, X_test_enc, y_train[train], y_train[test]))
+        tf.reset_default_graph()
+        print(avg_f1_score)
+    return avg_f1_score/FLAGS.k
 
 def main(argv):
-    best_parameters = grid_search_stacked_autoencoder()
+    best_parameters = grid_search()
     print("Best Parameters found (REG, NOISE, FRACTION, LEARNING RATE): ", best_parameters)
     return
 
