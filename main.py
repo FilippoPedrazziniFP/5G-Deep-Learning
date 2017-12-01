@@ -3,7 +3,7 @@ import sys
 import tensorflow as tf
 import numpy as np
 from preprocessing import Preprocessing
-from model import SoftMaxRegression, SparseAutoEncoder
+from model import SoftMaxRegression, SparseAutoEncoder, StackedAutoEncoder
 from plots import Plot
 import argparse
 import progressbar
@@ -12,21 +12,36 @@ bar = progressbar.ProgressBar()
 
 parser = argparse.ArgumentParser()
 
-""" Network Parameters """
+""" Softmax Regression Parameters """
 parser.add_argument('--batch_size', type=int, default=100, help='batch size for the training.')
 parser.add_argument('--dropout', type=float, default=0.2, help='keep probability of neurons during the training.')
-parser.add_argument('--epochs', type=int, default=1, help='number of batch iterations.')
+parser.add_argument('--epochs', type=int, default=5, help='number of batch iterations.')
 parser.add_argument('--validation', type=int, default=10, help='number of batch iterations.')
 parser.add_argument('--weight_decay', type=float, default=0.1, help='scale for l2 regularization.')
 parser.add_argument('--learning_rate', type=float, default=0.1, help='initial learning rate.')
+
+""" General Parameters """
 parser.add_argument('--model_path', type=str, default='./model/model', help='model checkpoints directory.')
 parser.add_argument('--restore', type=bool, default=False, help='if True restore the model from --model_path.')
 parser.add_argument('--save_scores', type=bool, default=True, help='if True save scores with parameters in a txt file.')
+parser.add_argument('--test', type=bool, default=True, help='if True compute the score on the test set.')
+parser.add_argument('--plot', type=bool, default=False, help='if True plots train and test accuracy/loss.')
+parser.add_argument('--report', type=bool, default=True, help='if True plots classification report.')
+parser.add_argument('--autoencoder', type=str, choices= ["stacked" , "sparse", None], default="stacked", help='which autoencoder to use')
 
-""" Sparse Autoecnoder Parameters """
-parser.add_argument('--alpha', type=float, default=0.00001, help='regularization parameter for sparse autoencoder.')
+""" Sparse Autoencoder Parameters """
+parser.add_argument('--reg', type=float, default=0.00001, help='regularization parameter for sparse autoencoder.')
 parser.add_argument('--rho', type=float, default=0.05, help='sparsity value.')
 parser.add_argument('--beta', type=float, default=3, help='regularization parameter for sparse autoencoder.')
+parser.add_argument('--learning_rate_sparse', type=float, default=0.1, help='initial learning rate.')
+
+""" Stacked Denoising Autoencoder Parameters """
+""" (REG, NOISE, FRACTION, LEARNING RATE):  [0.01, 'salt_and_pepper', 0.1, 0.1] """
+""" (REG, NOISE, FRACTION, LEARNING RATE):  [0.01, 'masking', 0.0, 0.1] """
+parser.add_argument('--noise', type=str, choices= ["masking" , "salt_and_pepper", None], default="salt_and_pepper", help='noising method for corrupting the input.')
+parser.add_argument('--fraction', type=float, default=0.1, help='fraction of the input to corrupt.')
+parser.add_argument('--learning_rate_stacked', type=float, default=0.01, help='initial learning rate.')
+parser.add_argument('--reg_stacked', type=float, default=0.1, help='regularization parameter for stacked autoencoder.')
 
 args = parser.parse_args()
 
@@ -46,7 +61,7 @@ def next_batch(num, data, labels=None):
     else:
         return np.asarray(data_shuffle)
 
-def training(X_train, X_test, y_train, y_test):
+def training_classifier(X_train, X_test, y_train, y_test):
 
     train_a = []
     train_c = []
@@ -69,7 +84,7 @@ def training(X_train, X_test, y_train, y_test):
     sess.run(tf.global_variables_initializer())
 
     print("Training classifier...")
-    for epoch in bar(range(FLAGS.epochs*FLAGS.batch_size)):
+    for epoch in range(FLAGS.epochs*FLAGS.batch_size):
         batch_x, batch_y = next_batch(FLAGS.batch_size, X_train, y_train)
         train_dict = {model.x: batch_x, model.y_: batch_y, model.learning_rate: FLAGS.learning_rate, model.dropout: FLAGS.dropout, model.weight_decay: FLAGS.weight_decay, model.is_training: True}
         sess.run(model.optimizer, feed_dict=train_dict)
@@ -77,11 +92,13 @@ def training(X_train, X_test, y_train, y_test):
             a, c = sess.run([model.acc, model.loss], feed_dict=train_dict)
             train_a.append(a)
             train_c.append(c)
+            print("Train Accuracy: ", a)
 
             test_dict = {model.x: X_test, model.y_: y_test, model.learning_rate: FLAGS.learning_rate, model.dropout: FLAGS.dropout, model.weight_decay: FLAGS.weight_decay, model.is_training: False}
             a, c = sess.run([model.acc, model.loss], feed_dict=test_dict)
             test_a.append(a)
             test_c.append(c)
+            print("Test Accuracy: ", a)
 
     """ Save model parameters """
     model_path = saver.save(sess, FLAGS.model_path)
@@ -92,14 +109,44 @@ def training(X_train, X_test, y_train, y_test):
 
 def classifier(X_train, X_test, y_train, y_test):
 
-    train_a, train_c, test_a, test_c, y_pred = training(X_train, X_test, y_train, y_test)
-    Plot.visualizing_learning(train_a, train_c, test_a, test_c, y_pred, y_test)
+    train_a, train_c, test_a, test_c, y_pred = training_classifier(X_train, X_test, y_train, y_test)
+    Plot.visualizing_learning(train_a, train_c, test_a, test_c, FLAGS.plot)
+    f1_score = Plot.report(y_pred, y_test, FLAGS.report)
     if FLAGS.save_scores == True:
-        Plot.saving_scores(FLAGS, test_a[-1])
+        Plot.saving_scores(FLAGS, test_a[-1], f1_score)
     return
 
-def autoencoder(X_train, X_test):
+def train_stacked_autoencoder(X_train, X_test):
+    model = StackedAutoEncoder()
+    """ Tensorflow needs to see the graph before initilize 
+        the variables for the computation """
+    model.build_graph()
+    config = tf.ConfigProto(intra_op_parallelism_threads=_PROCESSORS, inter_op_parallelism_threads=_PROCESSORS)
+    sess = tf.Session(config=config)
 
+    sess.run(tf.global_variables_initializer())
+
+    print("Training Stacked Autoencoder...")
+    for epoch in range(FLAGS.epochs*FLAGS.batch_size):
+        batch_x = next_batch(FLAGS.batch_size, X_train)
+        train_dict = {model.x: batch_x, model.learning_rate_stacked: FLAGS.learning_rate_stacked, model.reg_stacked: FLAGS.reg_stacked, model.noise: FLAGS.noise, model.fraction: FLAGS.fraction}
+        sess.run(model.optimizer, feed_dict=train_dict)
+        if epoch % 10 == 0:
+            c = sess.run([model.loss], feed_dict=train_dict)
+            print("Train Loss: ", c)
+    """ Computing the encoded version of X_train and X_test """
+    
+    X_train_dict = {model.x: X_train, model.learning_rate_stacked: FLAGS.learning_rate_stacked, model.reg_stacked: FLAGS.reg_stacked, model.noise: FLAGS.noise, model.fraction: FLAGS.fraction}
+    X_test_dict = {model.x: X_test, model.learning_rate_stacked: FLAGS.learning_rate_stacked, model.reg_stacked: FLAGS.reg_stacked, model.noise: FLAGS.noise, model.fraction: FLAGS.fraction}
+
+    X_train = np.asarray(sess.run([model.x_encoded], feed_dict=X_train_dict))
+    X_test = np.asarray(sess.run([model.x_encoded], feed_dict=X_test_dict))
+    X_train = X_train.reshape(-1, 30)
+    X_test = X_test.reshape(-1, 30)
+    """ Closing the session to avoid cnflicts with the test """
+    return X_train, X_test
+
+def train_sparse_autoencoder(X_train, X_test):
     model = SparseAutoEncoder()
     """ Tensorflow needs to see the graph before initilize 
         the variables for the computation """
@@ -109,33 +156,53 @@ def autoencoder(X_train, X_test):
 
     sess.run(tf.global_variables_initializer())
 
-    print("Training Autoencoder...")
+    print("Training Sparse Autoencoder...")
     for epoch in range(FLAGS.epochs*FLAGS.batch_size):
         batch_x = next_batch(FLAGS.batch_size, X_train)
-        train_dict = {model.x: batch_x, model.learning_rate: FLAGS.learning_rate, model.alpha: FLAGS.alpha, model.beta: FLAGS.beta, model.rho: FLAGS.rho }
+        train_dict = {model.x: batch_x, model.learning_rate_sparse: FLAGS.learning_rate_sparse, model.reg: FLAGS.reg, model.beta: FLAGS.beta, model.rho: FLAGS.rho }
         sess.run(model.optimizer, feed_dict=train_dict)
         if epoch % 10 == 0:
             c = sess.run([model.loss], feed_dict=train_dict)
             print("Train Loss: ", c)
+    
+    """ Computing the encoded version of X_train and X_test """    
+    X_train_dict = {model.x: X_train, model.learning_rate_sparse: FLAGS.learning_rate_sparse, model.reg: FLAGS.reg, model.beta: FLAGS.beta, model.rho: FLAGS.rho }
+    X_test_dict = {model.x: X_test, model.learning_rate_sparse: FLAGS.learning_rate_sparse, model.reg: FLAGS.reg, model.beta: FLAGS.beta, model.rho: FLAGS.rho }
 
-    X_train_dict = {model.x: X_train, model.learning_rate: FLAGS.learning_rate, model.alpha: FLAGS.alpha, model.beta: FLAGS.beta, model.rho: FLAGS.rho }
-    X_test_dict = {model.x: X_test, model.learning_rate: FLAGS.learning_rate, model.alpha: FLAGS.alpha, model.beta: FLAGS.beta, model.rho: FLAGS.rho }
-    """ Computing the encoded version of X_train and X_test """
     X_train = np.asarray(sess.run([model.x_encoded], feed_dict=X_train_dict))
     X_test = np.asarray(sess.run([model.x_encoded], feed_dict=X_test_dict))
     X_train = X_train.reshape(-1, 30)
     X_test = X_test.reshape(-1, 30)
+    """ Closing the session to avoid cnflicts with the test """
     return X_train, X_test
 
-def main(argv):
+def test():
+    X_train, X_test, y_train, y_test = Preprocessing.test_preprocessing(_TRAIN_PATH, _TEST_PATH)
 
+    """ Running the Autoencoder """
+    if FLAGS.autoencoder == "stacked":
+        X_train, X_test = train_stacked_autoencoder(X_train, X_test)
+    elif FLAGS.autoencoder == "sparse":
+        X_train, X_test = train_sparse_autoencoder(X_train, X_test)
+    """ Running the classifier """
+    classifier(X_train, X_test, y_train, y_test)
+
+
+def main(argv):
     X_train, X_test, y_train, y_test = Preprocessing.train_preprocessing(_TRAIN_PATH)
-    
-    """ Running the autoencoder """
-    X_train, X_test = autoencoder(X_train, X_test)
+    """ Running the Autoencoder """
+    if FLAGS.autoencoder == "stacked":
+        X_train, X_test = train_stacked_autoencoder(X_train, X_test)
+    elif FLAGS.autoencoder == "sparse":
+        X_train, X_test = train_sparse_autoencoder(X_train, X_test)
+    """ Running the classifier """
 
     """ Running the classifier """
     classifier(X_train, X_test, y_train, y_test)
+    tf.reset_default_graph()
+
+    if FLAGS.test == True:
+        test()
     return
 
 if __name__ == '__main__':

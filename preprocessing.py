@@ -82,8 +82,37 @@ class Preprocessing(object):
 
 		df_train = Preprocessing.importing_the_dataset(train_path)
 		df_test = Preprocessing.importing_the_dataset(test_path)
-		X_train, y_train = Preprocessing.getting_x_y(df_train)
-		X_test, y_test =Preprocessing.getting_x_y(df_test)
+		
+		""" X_train, y_train split """
+		target = df_train['labels'].copy()
+		target[target != 'normal'] = 'attack'
+		X_train = df_train.iloc[:, :-1]
+		le = preprocessing.LabelEncoder()
+		le.fit(target)
+		binary_target = le.transform(target)
+		y_train = binary_target
+
+		""" X_test, y_test split """
+		target = df_test['labels'].copy()
+		target[target != 'normal'] = 'attack'
+		X_test = df_test.iloc[:, :-1]
+		le = preprocessing.LabelEncoder()
+		le.fit(target)
+		binary_target = le.transform(target)
+		y_test = binary_target
+
+		""" Test and Train have different cat variables. The simple OHE doensn't work """
+		all_data = pd.concat((X_train,X_test))
+		for column in all_data.select_dtypes(include=[np.object]).columns:
+		    X_train[column] = X_train[column].astype('category', categories=all_data[column].unique())
+		    X_test[column] = X_test[column].astype('category', categories=all_data[column].unique())
+
+		X_train = pd.get_dummies(X_train)
+		X_test = pd.get_dummies(X_test)
+
+		X_train = X_train.astype(float).values
+		X_test = X_test.astype(float).values
+
 		X_train, X_test = Preprocessing.feature_scaling(X_train, X_test)
 		y_train = Preprocessing.y_to_categorical(y_train, _CLASSES)
 		y_test = Preprocessing.y_to_categorical(y_test, _CLASSES)
