@@ -1,0 +1,2 @@
+tensorflow==1.4.0                     
+tensorflow-tensorboard==0.4.0rc3                  
