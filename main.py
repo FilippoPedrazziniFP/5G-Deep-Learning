@@ -12,6 +12,16 @@ bar = progressbar.ProgressBar()
 
 parser = argparse.ArgumentParser()
 
+""" General Parameters """
+parser.add_argument('--model_path', type=str, default='./model/model', help='model checkpoints directory.')
+parser.add_argument('--restore', type=bool, default=False, help='if True restore the model from --model_path.')
+parser.add_argument('--save_scores', type=bool, default=True, help='if True save scores with parameters in a txt file.')
+parser.add_argument('--test', type=bool, default=False, help='if True compute the score on the test set.')
+parser.add_argument('--plot', type=bool, default=False, help='if True plots train and test accuracy/loss.')
+parser.add_argument('--report', type=bool, default=True, help='if True plots classification report.')
+parser.add_argument('--autoencoder', type=str, choices= ["stacked" , "sparse", None], default="stacked", help='which autoencoder to use')
+parser.add_argument('--log_dir', type=str, default='./tensorbaord', help='directory where to store tensorbaord values.')
+
 """ Softmax Regression Parameters """
 parser.add_argument('--batch_size', type=int, default=100, help='batch size for the training.')
 parser.add_argument('--dropout', type=float, default=0.2, help='keep probability of neurons during the training.')
@@ -20,15 +30,6 @@ parser.add_argument('--validation', type=int, default=10, help='number of batch 
 parser.add_argument('--weight_decay', type=float, default=0.1, help='scale for l2 regularization.')
 parser.add_argument('--learning_rate', type=float, default=0.1, help='initial learning rate.')
 
-""" General Parameters """
-parser.add_argument('--model_path', type=str, default='./model/model', help='model checkpoints directory.')
-parser.add_argument('--restore', type=bool, default=False, help='if True restore the model from --model_path.')
-parser.add_argument('--save_scores', type=bool, default=True, help='if True save scores with parameters in a txt file.')
-parser.add_argument('--test', type=bool, default=True, help='if True compute the score on the test set.')
-parser.add_argument('--plot', type=bool, default=False, help='if True plots train and test accuracy/loss.')
-parser.add_argument('--report', type=bool, default=True, help='if True plots classification report.')
-parser.add_argument('--autoencoder', type=str, choices= ["stacked" , "sparse", None], default="stacked", help='which autoencoder to use')
-
 """ Sparse Autoencoder Parameters """
 parser.add_argument('--reg', type=float, default=0.00001, help='regularization parameter for sparse autoencoder.')
 parser.add_argument('--rho', type=float, default=0.05, help='sparsity value.')
@@ -36,6 +37,7 @@ parser.add_argument('--beta', type=float, default=3, help='regularization parame
 parser.add_argument('--learning_rate_sparse', type=float, default=0.1, help='initial learning rate.')
 
 """ Stacked Denoising Autoencoder Parameters """
+"""(REG, NOISE, FRACTION, LEARNING RATE):  [0.5, 'salt_and_pepper', 0.8, 0.0001]"""
 parser.add_argument('--noise', type=str, choices= ["masking" , "salt_and_pepper", None], default="salt_and_pepper", help='noising method for corrupting the input.')
 parser.add_argument('--fraction', type=float, default=0.1, help='fraction of the input to corrupt.')
 parser.add_argument('--learning_rate_stacked', type=float, default=0.01, help='initial learning rate.')
@@ -80,6 +82,8 @@ def training_classifier(X_train, X_test, y_train, y_test):
         print("Model restored from checkpoint")
     
     sess.run(tf.global_variables_initializer())
+    train_writer = tf.summary.FileWriter(FLAGS.log_dir + '/train', sess.graph)
+    test_writer = tf.summary.FileWriter(FLAGS.log_dir + '/test', sess.graph)
 
     print("Training classifier...")
     for epoch in range(FLAGS.epochs*FLAGS.batch_size):
@@ -87,13 +91,15 @@ def training_classifier(X_train, X_test, y_train, y_test):
         train_dict = {model.x: batch_x, model.y_: batch_y, model.learning_rate: FLAGS.learning_rate, model.dropout: FLAGS.dropout, model.weight_decay: FLAGS.weight_decay, model.is_training: True}
         sess.run(model.optimizer, feed_dict=train_dict)
         if epoch % 10 == 0:
-            a, c = sess.run([model.acc, model.loss], feed_dict=train_dict)
+            summary_train, a, c = sess.run([model.summaries_tensor, model.acc, model.loss], feed_dict=train_dict)
+            train_writer.add_summary(summary_train, global_step=epoch)
             train_a.append(a)
             train_c.append(c)
             print("Train Accuracy: ", a)
 
             test_dict = {model.x: X_test, model.y_: y_test, model.learning_rate: FLAGS.learning_rate, model.dropout: FLAGS.dropout, model.weight_decay: FLAGS.weight_decay, model.is_training: False}
-            a, c = sess.run([model.acc, model.loss], feed_dict=test_dict)
+            summary_test, a, c = sess.run([model.summaries_tensor, model.acc, model.loss], feed_dict=test_dict)
+            test_writer.add_summary(summary_test, global_step=epoch)
             test_a.append(a)
             test_c.append(c)
             print("Test Accuracy: ", a)
@@ -133,7 +139,6 @@ def train_stacked_autoencoder(X_train, X_test):
             c = sess.run([model.loss], feed_dict=train_dict)
             print("Train Loss: ", c)
     """ Computing the encoded version of X_train and X_test """
-    
     X_train_dict = {model.x: X_train, model.learning_rate_stacked: FLAGS.learning_rate_stacked, model.reg_stacked: FLAGS.reg_stacked, model.noise: FLAGS.noise, model.fraction: FLAGS.fraction}
     X_test_dict = {model.x: X_test, model.learning_rate_stacked: FLAGS.learning_rate_stacked, model.reg_stacked: FLAGS.reg_stacked, model.noise: FLAGS.noise, model.fraction: FLAGS.fraction}
 
@@ -184,61 +189,28 @@ def test():
         X_train, X_test = train_sparse_autoencoder(X_train, X_test)
     """ Running the classifier """
     classifier(X_train, X_test, y_train, y_test)
-
-
-def main(argv):
-    X_train, X_test, y_train, y_test = Preprocessing.train_preprocessing(_TRAIN_PATH)
-    """ Running the Autoencoder """
-    if FLAGS.autoencoder == "stacked":
-        X_train, X_test = train_stacked_autoencoder(X_train, X_test)
-    elif FLAGS.autoencoder == "sparse":
-        X_train, X_test = train_sparse_autoencoder(X_train, X_test)
-    """ Running the classifier """
-
-    """ Running the classifier """
-    classifier(X_train, X_test, y_train, y_test)
     tf.reset_default_graph()
 
+def main(argv):  
     if FLAGS.test == True:
         test()
+    else:
+        X_train, X_test, y_train, y_test = Preprocessing.train_preprocessing(_TRAIN_PATH)
+        """ Running the Autoencoder """
+        if FLAGS.autoencoder == "stacked":
+            X_train, X_test = train_stacked_autoencoder(X_train, X_test)
+        elif FLAGS.autoencoder == "sparse":
+            X_train, X_test = train_sparse_autoencoder(X_train, X_test)
+        """ Running the classifier """
+
+        """ Running the classifier """
+        classifier(X_train, X_test, y_train, y_test)
+        tf.reset_default_graph()
     return
 
 if __name__ == '__main__':
     tf.logging.set_verbosity(tf.logging.INFO)
     FLAGS, unparsed = parser.parse_known_args()
     tf.app.run(main=main, argv=[sys.argv[0]] + unparsed)
-
-"""
-# 1. Declare summaries that you'd like to collect.
-tf.scalar_summary("summary_name", tensor, name = "summary_op_name")
-
-# 2. Construct a summary writer object for the computation graph, once all summaries are defined.
-summary_writer = tf.train.SummaryWriter(summary_dir_name, sess.graph)
-
-# 3. Group all previously declared summaries for serialization. Usually we want all summaries defined
-# in the computation graph. To pick a subset, use tf.merge_summary([summaries]).
-summaries_tensor = tf.merge_all_summaries()
-
-# 4. At runtime, in appropriate places, evaluate the summaries_tensor, to assign value.
-summary_value, ... = sess.run([summaries_tensor, ...], feed_dict={...})
-
-# 5. Write the summary value to disk, using summary writer.
-summary_writer.add_summary(summary_value, global_step=step)
-
-"""
-
-"""
-other method without parsing parameters
-tf.app.flags.DEFINE_boolean("some_flag", False, "Documentation")
-
-FLAGS = tf.app.flags.FLAGS
-
-def main(_):
-  # your code goes here...
-  # use FLAGS.some_flag in the code.
-
-if __name__ == '__main__':
-    tf.app.run()
-"""
 
     

@@ -30,12 +30,12 @@ class SoftMaxRegression(object):
 		return out
 	
 	def error(self, y, y_):
-		return tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(labels=y_, logits=y))
+		return tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(labels=y_, logits=y), name="lossNN")
 
 	def optimize(self, loss):
 		global_step = tf.Variable(0, trainable=False)
 		lr = tf.train.inverse_time_decay(self.learning_rate, global_step, _K_LEARNING_DECAY, _DECAY_RATE_LD)
-		return tf.train.AdamOptimizer(lr).minimize(loss)
+		return tf.train.AdamOptimizer(lr).minimize(loss, name="optimizerNN")
 
 	def accuracy(self, logits, y_):
 		prediction = tf.nn.softmax(logits)
@@ -46,9 +46,12 @@ class SoftMaxRegression(object):
 		logits = self.inference(self.x, reuse=False)
 		vali_logits = self.inference(self.x, reuse=True)
 		self.predictions = tf.nn.softmax(vali_logits)
-		self.loss = self.error(logits, self.y_) 
+		self.loss = self.error(logits, self.y_)
+		tf.summary.scalar("loss", self.loss) 
 		self.optimizer = self.optimize(self.loss)
 		self.acc = self.accuracy(vali_logits, self.y_)
+		tf.summary.scalar("accuracy", self.acc)
+		self.summaries_tensor = tf.summary.merge_all()
 
 class SparseAutoEncoder(object):
 	"""docstring for AutoEncoder"""
@@ -89,13 +92,13 @@ class SparseAutoEncoder(object):
 		with tf.variable_scope('dec_layer', reuse=True):
 			w2 = tf.get_variable("fc_weights")
 		diff = x - x_decoded
-		cost = 0.5*tf.reduce_mean(tf.reduce_sum(diff**2,axis=1), name="loss") + 0.5*self.reg*(tf.nn.l2_loss(w1) + tf.nn.l2_loss(w2)) + self.beta*tf.reduce_sum(kl)
+		cost = 0.5*tf.reduce_mean(tf.reduce_sum(diff**2,axis=1), name="lossSAE") + 0.5*self.reg*(tf.nn.l2_loss(w1) + tf.nn.l2_loss(w2)) + self.beta*tf.reduce_sum(kl)
 		return cost
 
 	def optimize(self, loss):
 		global_step = tf.Variable(0, trainable=False)
 		lr = tf.train.inverse_time_decay(self.learning_rate_sparse, global_step, _K_LEARNING_DECAY, _DECAY_RATE_LD)
-		return tf.train.AdamOptimizer(lr).minimize(loss, name="optimizer")
+		return tf.train.AdamOptimizer(lr).minimize(loss, name="optimizerSAE")
 
 	def build_graph(self):
 		self.loss = self.error(self.x) 
@@ -169,14 +172,14 @@ class StackedAutoEncoder(object):
 		x_encoded = self.encode(x_corrupted, reuse=False)
 		x_decoded = self.decode(x_encoded, reuse=False)
 		diff = x - x_decoded
-		cost = tf.sqrt(tf.reduce_mean(tf.square(diff)), name="loss")
+		cost = tf.sqrt(tf.reduce_mean(tf.square(diff)), name="lossSAE")
 		return cost
 
 	def optimize(self, loss):
 		global_step = tf.Variable(0, trainable=False)
 		lr = tf.train.inverse_time_decay(self.learning_rate_stacked, global_step, _K_LEARNING_DECAY, _DECAY_RATE_LD)
 		""" AdagradOptimizer, AdamOptimizer, GradientDescentOptimizer, """
-		return tf.train.AdamOptimizer(lr).minimize(loss, name="optimizer")
+		return tf.train.AdamOptimizer(lr).minimize(loss, name="optimizerSAE")
 
 	def build_graph(self):
 		self.loss = self.error(self.x) 

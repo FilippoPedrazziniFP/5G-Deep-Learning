@@ -16,8 +16,8 @@ parser = argparse.ArgumentParser()
 """ General parameters """
 parser.add_argument('--model_path', type=str, default='./model/model', help='model checkpoints directory.')
 parser.add_argument('--restore', type=bool, default=False, help='if True restore the model from --model_path.')
-parser.add_argument('--save_scores', type=bool, default=True, help='if True save scores with parameters in a txt file.')
-parser.add_argument('--test', type=bool, default=True, help='if True compute the score on the test set.')
+parser.add_argument('--save_scores', type=bool, default=False, help='if True save scores with parameters in a txt file.')
+parser.add_argument('--test', type=bool, default=False, help='if True compute the score on the test set.')
 parser.add_argument('--plot', type=bool, default=False, help='if True plots train and test accuracy/loss.')
 parser.add_argument('--report', type=bool, default=False, help='if True plots classification report.')
 parser.add_argument('--k', type=int, default=5, help='k fold cross validation.')
@@ -125,7 +125,6 @@ def grid_search():
         if f1_score > best_f1:
             model_dict[f1_score] = [reg, nois, frac, lr]
             best_f1 = f1_score
-    print("Best f1: %s with parameters: %s" %(best_f1, model_dict[best_f1]))
     return model_dict[best_f1]
 
 def model(reg, nois, frac, lr):

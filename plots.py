@@ -54,5 +54,5 @@ class Plot(object):
 		file = open("results/scores.txt", "a")
 		file.write("Params: %s --> Accuracy: %s, F1 Score: %s \n" %(flags, test_accuracy, f1_value))
 		file.close()
-		# print("Saved test score and parameters in a file.")
+		print("Saved test score and parameters in a file.")
 		return
