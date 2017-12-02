@@ -23,11 +23,11 @@ The repository contains the presentation and the paper written for the project r
 ### Usage 
 For training and see the hold out results
 
-$ python3 main.py
+	$ python3 main.py
 
 For training and see the results on the testset
 
-$ python3 main.py --test=True
+	$ python3 main.py --test=True
 
 
 
