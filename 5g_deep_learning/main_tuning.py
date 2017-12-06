@@ -14,7 +14,7 @@ bar = progressbar.ProgressBar()
 parser = argparse.ArgumentParser()
 
 """ General parameters """
-parser.add_argument('--model_path', type=str, default='./model/model', help='model checkpoints directory.')
+parser.add_argument('--model_path', type=str, default='./../model/model', help='model checkpoints directory.')
 parser.add_argument('--restore', type=bool, default=False, help='if True restore the model from --model_path.')
 parser.add_argument('--save_scores', type=bool, default=False, help='if True save scores with parameters in a txt file.')
 parser.add_argument('--test', type=bool, default=False, help='if True compute the score on the test set.')
@@ -33,8 +33,8 @@ parser.add_argument('--learning_rate', type=float, default=0.1, help='initial le
 args = parser.parse_args()
 
 # Model constants
-_TRAIN_PATH = './dataset_kdd/train.csv'
-_TEST_PATH = './dataset_kdd/test.csv'
+_TRAIN_PATH = './../data/train.csv'
+_TEST_PATH = './../data/test.csv'
 _PROCESSORS = 8
 
 def next_batch(num, data, labels=None):

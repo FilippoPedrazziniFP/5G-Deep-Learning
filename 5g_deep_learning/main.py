@@ -13,14 +13,14 @@ bar = progressbar.ProgressBar()
 parser = argparse.ArgumentParser()
 
 """ General Parameters """
-parser.add_argument('--model_path', type=str, default='./model/model', help='model checkpoints directory.')
+parser.add_argument('--model_path', type=str, default='./../model/model', help='model checkpoints directory.')
 parser.add_argument('--restore', type=bool, default=False, help='if True restore the model from --model_path.')
 parser.add_argument('--save_scores', type=bool, default=True, help='if True save scores with parameters in a txt file.')
 parser.add_argument('--test', type=bool, default=False, help='if True compute the score on the test set.')
 parser.add_argument('--plot', type=bool, default=False, help='if True plots train and test accuracy/loss.')
 parser.add_argument('--report', type=bool, default=True, help='if True plots classification report.')
 parser.add_argument('--autoencoder', type=str, choices= ["stacked" , "sparse", None], default="stacked", help='which autoencoder to use')
-parser.add_argument('--log_dir', type=str, default='./tensorbaord', help='directory where to store tensorbaord values.')
+parser.add_argument('--log_dir', type=str, default='./../tensorbaord', help='directory where to store tensorbaord values.')
 
 """ Softmax Regression Parameters """
 parser.add_argument('--batch_size', type=int, default=100, help='batch size for the training.')
@@ -46,8 +46,8 @@ parser.add_argument('--reg_stacked', type=float, default=0.01, help='regularizat
 args = parser.parse_args()
 
 # Model constants
-_TRAIN_PATH = './dataset_kdd/train.csv'
-_TEST_PATH = './dataset_kdd/test.csv'
+_TRAIN_PATH = './../data/train.csv'
+_TEST_PATH = './../data/test.csv'
 _PROCESSORS = 8
 
 def next_batch(num, data, labels=None):
@@ -78,12 +78,12 @@ def training_classifier(X_train, X_test, y_train, y_test):
     """ To restore the saved model """
     if FLAGS.restore == True:
         saver = tf.train.import_meta_graph(FLAGS.model_path + '.meta')
-        saver.restore(sess, tf.train.latest_checkpoint('./model/'))
+        saver.restore(sess, tf.train.latest_checkpoint('./../model/'))
         print("Model restored from checkpoint")
     
     sess.run(tf.global_variables_initializer())
-    train_writer = tf.summary.FileWriter(FLAGS.log_dir + '/train', sess.graph)
-    test_writer = tf.summary.FileWriter(FLAGS.log_dir + '/test', sess.graph)
+    train_writer = tf.summary.FileWriter('./../' + FLAGS.log_dir + '/train', sess.graph)
+    test_writer = tf.summary.FileWriter('./../' + FLAGS.log_dir + '/test', sess.graph)
 
     print("Training classifier...")
     for epoch in range(FLAGS.epochs*FLAGS.batch_size):
